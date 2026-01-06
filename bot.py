@@ -1,35 +1,63 @@
 import asyncio
 import os
-import json
+import sqlite3
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiohttp import web
 
+# ====== НАСТРОЙКИ ======
 TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.getenv("PORT", 8080))
 
-ADMINS = [6293203234]  # ← ВСТАВЬ СВОЙ TELEGRAM ID
+ADMINS = [123456789]  # ← ВСТАВЬ СВОЙ TELEGRAM ID
+DB_FILE = "dishes.db"
 
-DATA_FILE = "dishes.json"
-
+# ====== INIT ======
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# ---------- ВСПОМОГАТЕЛЬНОЕ ----------
+db_lock = asyncio.Lock()
+
+# ====== БАЗА ДАННЫХ ======
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS stops (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            date TEXT NOT NULL,
+            reason TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+async def add_stop(name, date, reason):
+    async with db_lock:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO stops (name, date, reason) VALUES (?, ?, ?)",
+            (name, date, reason)
+        )
+        conn.commit()
+        conn.close()
+
+async def get_stops():
+    async with db_lock:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, date, reason FROM stops")
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
+
+# ====== ВСПОМОГАТЕЛЬНОЕ ======
 def is_admin(user_id: int) -> bool:
     return user_id in ADMINS
 
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        return []
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-# ---------- КНОПКИ ----------
+# ====== КЛАВИАТУРА ======
 def main_keyboard(is_admin_user=False):
     buttons = [[types.KeyboardButton(text="📄 Стоп-лист")]]
     if is_admin_user:
@@ -39,7 +67,7 @@ def main_keyboard(is_admin_user=False):
         resize_keyboard=True
     )
 
-# ---------- КОМАНДЫ ----------
+# ====== START ======
 @dp.message(Command("start"))
 async def start(message: types.Message):
     admin = is_admin(message.from_user.id)
@@ -48,34 +76,37 @@ async def start(message: types.Message):
         reply_markup=main_keyboard(admin)
     )
 
-# ---------- ПОКАЗ СТОПА ----------
+# ====== ПОКАЗ СТОП-ЛИСТА ======
 @dp.message(lambda m: m.text == "📄 Стоп-лист")
 async def show_stop(message: types.Message):
-    data = load_data()
-    if not data:
+    await message.answer("⏳ Загружаю стоп-лист...")
+
+    stops = await get_stops()
+    if not stops:
         await message.answer("✅ Сейчас нет блюд на стопе")
         return
 
     text = ""
-    for item in data:
+    for name, date, reason in stops:
         text += (
-            f"🍽 {item['name']}\n"
-            f"🔴 Стоп: {item['date']}\n"
-            f"Причина: {item['reason']}\n\n"
+            f"🍽 {name}\n"
+            f"🔴 Стоп: {date}\n"
+            f"Причина: {reason}\n\n"
         )
 
     await message.answer(text)
 
-# ---------- ДОБАВЛЕНИЕ СТОПА ----------
+# ====== ДОБАВЛЕНИЕ СТОПА ======
 @dp.message(lambda m: m.text == "➕ Поставить на стоп")
 async def add_stop_start(message: types.Message):
     if not is_admin(message.from_user.id):
         return
+
     await message.answer(
         "Отправь данные в формате:\n\n"
         "Название / Дата / Причина\n\n"
         "Пример:\n"
-        "Эклеры | 21.12 | доработка"
+        "Эклеры / 21.12 / доработка"
     )
 
 @dp.message(lambda m: "/" in m.text)
@@ -89,17 +120,10 @@ async def add_stop_save(message: types.Message):
         await message.answer("❌ Неверный формат")
         return
 
-    data = load_data()
-    data.append({
-        "name": name,
-        "date": date,
-        "reason": reason
-    })
-    save_data(data)
-
+    await add_stop(name, date, reason)
     await message.answer(f"✅ {name} поставлено на стоп")
 
-# ---------- КОСТЫЛЬ ДЛЯ RENDER ----------
+# ====== КОСТЫЛЬ ДЛЯ RENDER (WEB SERVICE) ======
 async def start_web():
     app = web.Application()
     app.router.add_get("/", lambda request: web.Response(text="OK"))
@@ -112,6 +136,7 @@ async def start_bot():
     await dp.start_polling(bot)
 
 async def main():
+    init_db()
     await asyncio.gather(
         start_bot(),
         start_web()
@@ -119,3 +144,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
