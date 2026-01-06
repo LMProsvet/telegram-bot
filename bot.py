@@ -73,18 +73,18 @@ async def add_stop_start(message: types.Message):
         return
     await message.answer(
         "Отправь данные в формате:\n\n"
-        "Название | Дата | Причина\n\n"
+        "Название / Дата / Причина\n\n"
         "Пример:\n"
         "Эклеры | 21.12 | доработка"
     )
 
-@dp.message(lambda m: "|" in m.text)
+@dp.message(lambda m: "/" in m.text)
 async def add_stop_save(message: types.Message):
     if not is_admin(message.from_user.id):
         return
 
     try:
-        name, date, reason = [x.strip() for x in message.text.split("|", 2)]
+        name, date, reason = [x.strip() for x in message.text.split("/", 2)]
     except ValueError:
         await message.answer("❌ Неверный формат")
         return
