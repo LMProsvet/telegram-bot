@@ -9,7 +9,7 @@ from aiohttp import web
 TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.getenv("PORT", 8080))
 
-ADMINS = [123456789]  # ← ВСТАВЬ СВОЙ TELEGRAM ID
+ADMINS = [6293203234]  # ← ВСТАВЬ СВОЙ TELEGRAM ID
 DB_FILE = "dishes.db"
 
 # ====== INIT ======
