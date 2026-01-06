@@ -124,6 +124,15 @@ async def add_stop_save(message: types.Message):
     await message.answer(f"✅ {name} поставлено на стоп")
 
 # ====== КОСТЫЛЬ ДЛЯ RENDER (WEB SERVICE) ======
+@dp.message(Command("whoami"))
+async def whoami(message: types.Message):
+    await message.answer(
+        f"Твой ID: {message.from_user.id}\n"
+        f"Админ: {is_admin(message.from_user.id)}"
+    )
+
+
+
 async def start_web():
     app = web.Application()
     app.router.add_get("/", lambda request: web.Response(text="OK"))
